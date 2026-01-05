@@ -1,5 +1,9 @@
+/**
+ * FTC Picklist Builder - Phase 3 (FTC Scout + Monte Carlo)
+ */
+
 // Configuration
-const FTC_EVENTS_API = 'https://ftc-api.firstinspires.org/v2.0';
+const FTCSCOUT_URL = 'https://api.ftcscout.org/graphql';
 
 // State
 let currentPickList = [];
@@ -13,69 +17,49 @@ const errorPanel = document.getElementById('errorPanel');
 const errorMessage = document.getElementById('errorMessage');
 const resultsSection = document.getElementById('resultsSection');
 const exportBtn = document.getElementById('exportBtn');
-const applyFilters = document.getElementById('applyFilters');
+const applyFiltersBtn = document.getElementById('applyFilters');
 
 // Event Listeners
 loadEventBtn.addEventListener('click', loadEvent);
-exportBtn.addEventListener('click', exportPickList);
-applyFilters.addEventListener('click', applyFiltersAndSort);
+if (exportBtn) exportBtn.addEventListener('click', exportPickList);
+if (applyFiltersBtn) applyFiltersBtn.addEventListener('click', applyFiltersAndSort);
 
-document.querySelectorAll('input').forEach(input => {
-    input.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') loadEvent();
-    });
-});
-
-async function fetchTeamStatsFromScout(teamNumber, season = 2025) {
-    const query = `
-        query GetTeamStats($teamNumber: Int!, $season: Int!) {
-            teamByNumber(number: $teamNumber) {
-                number
-                quickStats(season: $season) {
-                    tot { value }
-                    auto { value }
-                    dc { value }
-                }
-            }
-        }
-    `;
-    
-    try {
-        const response = await fetch('https://api.ftcscout.org/graphql', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                query,
-                variables: { teamNumber: parseInt(teamNumber), season }
-            })
-        });
-        
-        const data = await response.json();
-        if (data.errors || !data.data?.teamByNumber) return null;
-        
-        const team = data.data.teamByNumber;
-        const stats = team.quickStats;
-        
-        if (!stats || !stats.tot?.value) return null;
-        
-        return {
-            total: stats.tot.value,
-            auto: stats.auto?.value || stats.tot.value * 0.25,
-            dc: stats.dc?.value || stats.tot.value * 0.55
-        };
-    } catch (err) {
-        console.error(`Failed to fetch team ${teamNumber}:`, err);
-        return null;
-    }
+/**
+ * MATH UTILITIES
+ */
+function gaussianRandom() {
+    let u = 0, v = 0;
+    while(u === 0) u = Math.random();
+    while(v === 0) v = Math.random();
+    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 }
 
+function runMonteCarlo(stats1, stats2, targetScore = 150, iterations = 2000) {
+    let winCount = 0;
+    for (let i = 0; i < iterations; i++) {
+        const score1 = Math.max(0, 
+            stats1.auto * (1 + gaussianRandom() * 0.15) +
+            stats1.teleop * (1 + gaussianRandom() * 0.15)
+        );
+        const score2 = Math.max(0,
+            stats2.auto * (1 + gaussianRandom() * 0.15) +
+            stats2.teleop * (1 + gaussianRandom() * 0.15)
+        );
+        if ((score1 + score2) >= targetScore) winCount++;
+    }
+    return (winCount / iterations) * 100;
+}
+
+/**
+ * DATA FETCHING
+ */
 async function loadEvent() {
     const eventCode = document.getElementById('eventCode').value.trim().toUpperCase();
-    const yourTeam = document.getElementById('yourTeamNumber').value.trim();
+    const yourTeamNum = document.getElementById('yourTeamNumber').value.trim();
     const season = 2025;
 
     if (!eventCode) {
-        showError('Please enter an event code');
+        showError('Please enter an event code (e.g., USNYNYBRQ2)');
         return;
     }
 
@@ -83,281 +67,184 @@ async function loadEvent() {
     hideResults();
     setLoading(true);
 
+    const QUERY = `
+    query GetEventData($code: String!, $season: Int!) {
+      eventByCode(code: $code, season: $season) {
+        name
+        code
+        teams {
+          teamNumber
+          team {
+            name
+            quickStats(season: $season) {
+              tot { value }
+              auto { value }
+              dc { value }
+            }
+          }
+        }
+      }
+    }`;
+
     try {
-        // Step 1: Get event info from FTC Events API
-        const eventResponse = await fetch(
-            `${FTC_EVENTS_API}/${season}/events?eventCode=${eventCode}`,
-            {
-                headers: {
-                    'Authorization': `Basic ${btoa(FTC_EVENTS_AUTH)}`,
-                    'Accept': 'application/json'
-                }
-            }
-        );
+        const response = await fetch(FTCSCOUT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: QUERY, variables: { code: eventCode, season } })
+        });
 
-        if (!eventResponse.ok) {
-            throw new Error(`Event ${eventCode} not found for ${season} season`);
-        }
+        const result = await response.json();
+        const event = result.data?.eventByCode;
 
-        const eventData = await eventResponse.json();
-        if (!eventData.events || eventData.events.length === 0) {
-            throw new Error(`Event ${eventCode} not found`);
-        }
+        if (!event) throw new Error("Event not found on FTC Scout.");
 
-        const event = eventData.events[0];
-        currentEvent = {
-            name: event.name,
-            code: event.code
-        };
+        currentEvent = { name: event.name, code: event.code };
 
-        // Step 2: Get teams at event from FTC Events API
-        const teamsResponse = await fetch(
-            `${FTC_EVENTS_API}/${season}/teams?eventCode=${eventCode}`,
-            {
-                headers: {
-                    'Authorization': `Basic ${btoa(FTC_EVENTS_AUTH)}`,
-                    'Accept': 'application/json'
-                }
-            }
-        );
+        // Process Teams
+        const teamsData = event.teams.map(t => ({
+            number: t.teamNumber,
+            name: t.team?.name || "Unknown",
+            totalOPR: t.team?.quickStats?.tot?.value || 0,
+            auto: t.team?.quickStats?.auto?.value || 0,
+            teleop: t.team?.quickStats?.dc?.value || 0,
+            // Consistency simulated as a lower value is better (like standard deviation)
+            consistency: Math.max(5, 20 - (t.team?.quickStats?.tot?.value * 0.1) + (Math.random() * 5))
+        }));
 
-        if (!teamsResponse.ok) {
-            throw new Error('Failed to fetch teams at event');
-        }
+        const yourStats = teamsData.find(t => t.number === parseInt(yourTeamNum)) || 
+                          { auto: 0, teleop: 0, totalOPR: 0 };
 
-        const teamsData = await teamsResponse.json();
-        if (!teamsData.teams || teamsData.teams.length === 0) {
-            throw new Error('No teams found at this event');
-        }
-
-        // Step 3: Get rankings from FTC Events API
-        let rankings = [];
-        try {
-            const rankingsResponse = await fetch(
-                `${FTC_EVENTS_API}/${season}/rankings/${eventCode}`,
-                {
-                    headers: {
-                        'Authorization': `Basic ${btoa(FTC_EVENTS_AUTH)}`,
-                        'Accept': 'application/json'
-                    }
-                }
-            );
-            
-            if (rankingsResponse.ok) {
-                const rankingsData = await rankingsResponse.json();
-                rankings = rankingsData.rankings || [];
-            }
-        } catch (err) {
-            console.log('Rankings not available yet');
-        }
-
-        // Step 4: Get OPR stats from FTCScout for each team
-        const teamNumbers = teamsData.teams.map(t => t.teamNumber);
-        const statsPromises = teamNumbers.map(num => fetchTeamStatsFromScout(num, season));
-        const allStats = await Promise.all(statsPromises);
-
-        // Merge data
-        const teamsWithData = [];
-        for (let i = 0; i < teamNumbers.length; i++) {
-            const teamNum = teamNumbers[i];
-            const stats = allStats[i];
-            const ranking = rankings.find(r => r.team?.teamNumber === teamNum);
-            
-            if (stats) {
-                teamsWithData.push({
-                    teamNumber: teamNum,
-                    opr: stats,
-                    rank: ranking?.rank || null,
-                    wins: ranking?.wins || 0,
-                    losses: ranking?.losses || 0,
-                    ties: ranking?.ties || 0,
-                    rp: ranking?.rankingPoints || 0,
-                    consistency: 15
-                });
-            }
-        }
-
-        if (teamsWithData.length === 0) {
-            throw new Error('No team stats available for this event');
-        }
-
-        // Calculate pick scores
-        const yourTeamData = yourTeam ? teamsWithData.find(t => t.teamNumber === parseInt(yourTeam)) : null;
-        
-        currentPickList = teamsWithData
-            .filter(team => !yourTeam || team.teamNumber !== parseInt(yourTeam))
+        currentPickList = teamsData
+            .filter(t => t.number !== parseInt(yourTeamNum))
             .map(team => {
-                let complementaryBonus = 0;
-                if (yourTeamData) {
-                    if (yourTeamData.opr.auto < 20 && team.opr.auto > 20) complementaryBonus += 15;
-                    if (yourTeamData.opr.dc < 40 && team.opr.dc > 40) complementaryBonus += 15;
-                }
-
-                const consistencyScore = Math.max(0, 100 - team.consistency);
-                const totalMatches = team.wins + team.losses + team.ties;
-                const winRate = totalMatches > 0 ? (team.wins / totalMatches * 100) : 0;
-
-                const pickScore = (
-                    team.opr.total * 0.5 +
-                    complementaryBonus * 0.2 +
-                    consistencyScore * 0.2 +
-                    winRate * 0.1
-                );
+                const winProb = runMonteCarlo(yourStats, team, 150);
+                const pickScore = (team.totalOPR * 0.4) + (winProb * 0.4) + ((25 - team.consistency) * 0.8);
 
                 return {
                     ...team,
-                    pickScore: pickScore,
-                    complementaryScore: complementaryBonus,
-                    winRate: winRate
+                    winProb: winProb,
+                    pickScore: pickScore
                 };
             })
             .sort((a, b) => b.pickScore - a.pickScore)
-            .map((team, i) => ({ ...team, pickOrder: i + 1 }));
+            .map((t, i) => ({ ...t, pickOrder: i + 1 }));
 
-        displayResults({ event: currentEvent, pickList: currentPickList });
-        
-    } catch (error) {
-        console.error('Load error:', error);
-        showError(error.message || 'Failed to load event data');
+        displayResults();
+    } catch (err) {
+        showError(err.message);
     } finally {
         setLoading(false);
     }
 }
 
-function displayResults(data) {
+function displayResults() {
     resultsSection.classList.remove('hidden');
-
-    document.getElementById('eventName').textContent = data.event.name;
-    document.getElementById('eventCode2').textContent = `Code: ${data.event.code}`;
-    document.getElementById('teamCount').textContent = `${data.pickList.length} teams competing`;
-
-    renderPickList(data.pickList);
-    
-    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    document.getElementById('eventName').textContent = currentEvent.name;
+    document.getElementById('eventCode2').textContent = `Code: ${currentEvent.code}`;
+    document.getElementById('teamCount').textContent = `${currentPickList.length} teams found`;
+    renderTable(currentPickList);
 }
 
-function renderPickList(pickList) {
+function renderTable(list) {
     const tbody = document.getElementById('pickListBody');
     tbody.innerHTML = '';
 
-    pickList.forEach(team => {
+    list.forEach((team, index) => {
         const row = document.createElement('tr');
         row.className = 'pick-list-row';
         
-        let scoreClass = '';
-        if (team.pickScore >= 80) scoreClass = 'tier-s';
-        else if (team.pickScore >= 60) scoreClass = 'tier-a';
-        else if (team.pickScore >= 40) scoreClass = 'tier-b';
-        else scoreClass = 'tier-c';
+        let scoreClass = 'tier-c';
+        if (team.pickScore > 75) scoreClass = 'tier-s';
+        else if (team.pickScore > 50) scoreClass = 'tier-a';
 
         row.innerHTML = `
-            <td class="pick-order ${scoreClass}">${team.pickOrder}</td>
-            <td class="team-number"><strong>${team.teamNumber}</strong></td>
-            <td>${team.rank || '-'}</td>
+            <td class="pick-order">#${index + 1}</td>
+            <td><strong>${team.number}</strong><br><small>${team.name}</small></td>
+            <td>-</td>
             <td class="pick-score ${scoreClass}"><strong>${team.pickScore.toFixed(1)}</strong></td>
-            <td>${team.opr.total.toFixed(1)}</td>
-            <td>${team.opr.auto.toFixed(1)}</td>
-            <td>${team.opr.dc.toFixed(1)}</td>
-            <td>${team.wins}-${team.losses}-${team.ties}</td>
-            <td class="consistency">${team.consistency.toFixed(1)}</td>
+            <td>${team.totalOPR.toFixed(1)}</td>
+            <td>${team.auto.toFixed(1)}</td>
+            <td>${team.teleop.toFixed(1)}</td>
+            <td>-</td>
+            <td>${team.consistency.toFixed(1)}</td>
             <td>
-                <button class="btn-small" onclick="window.open('https://ftcscout.org/teams/${team.teamNumber}', '_blank')">
-                    Details
+                <button class="btn-small" onclick="window.open('https://ftcscout.org/teams/${team.number}', '_blank')">
+                    Stats
                 </button>
             </td>
         `;
-
         tbody.appendChild(row);
     });
 }
 
+/**
+ *FILTERS AND SORTING
+ */
 function applyFiltersAndSort() {
     const sortBy = document.getElementById('sortBy').value;
     const minOPR = parseFloat(document.getElementById('minOPR').value) || 0;
     const strengthFilter = document.getElementById('strengthFilter').value;
 
+    // 1. Filter the list
     let filtered = currentPickList.filter(team => {
-        if (team.opr.total < minOPR) return false;
-        if (strengthFilter === 'auto' && team.opr.auto < 20) return false;
-        if (strengthFilter === 'teleop' && team.opr.dc < 40) return false;
-        if (strengthFilter === 'consistent' && team.consistency > 30) return false;
+        // Minimum OPR Check
+        if (team.totalOPR < minOPR) return false;
+
+        // Strength Specialist Check
+        if (strengthFilter === 'auto') {
+            return team.auto > (team.totalOPR * 0.4); // Must contribute >40% in auto
+        }
+        if (strengthFilter === 'teleop') {
+            return team.teleop > (team.totalOPR * 0.6); // Must contribute >60% in teleop
+        }
+        if (strengthFilter === 'consistent') {
+            return team.consistency < 15; // Lower is better
+        }
+        
         return true;
     });
 
+    // 2. Sort the filtered list
     filtered.sort((a, b) => {
         switch(sortBy) {
-            case 'opr': return b.opr.total - a.opr.total;
+            case 'opr': return b.totalOPR - a.totalOPR;
+            case 'autoOPR': return b.auto - a.auto;
+            case 'dcOPR': return b.teleop - a.teleop;
             case 'consistency': return a.consistency - b.consistency;
-            case 'autoOPR': return b.opr.auto - a.opr.auto;
-            case 'dcOPR': return b.opr.dc - a.opr.dc;
-            case 'winRate': return b.winRate - a.winRate;
-            case 'rank': return (a.rank || 999) - (b.rank || 999);
+            case 'winRate': return b.winProb - a.winProb;
             default: return b.pickScore - a.pickScore;
         }
     });
 
-    filtered.forEach((team, i) => {
-        team.pickOrder = i + 1;
-    });
-
-    renderPickList(filtered);
+    renderTable(filtered);
 }
 
-function exportPickList() {
-    const eventName = currentEvent.name;
-    const timestamp = new Date().toISOString().split('T')[0];
-    
-    let csv = 'Pick Order,Team Number,Rank,Pick Score,Total OPR,Auto OPR,TeleOp OPR,Wins,Losses,Consistency\n';
-    
-    const tbody = document.getElementById('pickListBody');
-    const rows = tbody.querySelectorAll('tr');
-    
-    rows.forEach(row => {
-        const cells = row.querySelectorAll('td');
-        const pickOrder = cells[0].textContent;
-        const teamNumber = cells[1].textContent;
-        const rank = cells[2].textContent;
-        const pickScore = cells[3].textContent;
-        const totalOPR = cells[4].textContent;
-        const autoOPR = cells[5].textContent;
-        const teleopOPR = cells[6].textContent;
-        const record = cells[7].textContent.split('-');
-        const wins = record[0];
-        const losses = record[1];
-        const consistency = cells[8].textContent;
-        
-        csv += `${pickOrder},${teamNumber},${rank},${pickScore},${totalOPR},${autoOPR},${teleopOPR},${wins},${losses},${consistency}\n`;
-    });
+/**
+ * UI STATE HELPERS
+ */
+function setLoading(isLoading) {
+    loadEventBtn.disabled = isLoading;
+    loadBtnText.textContent = isLoading ? 'Analyzing Event Data...' : 'Load Event & Generate Pick List';
+    loadBtnLoader.classList.toggle('hidden', !isLoading);
+}
 
+function showError(msg) {
+    errorMessage.textContent = msg;
+    errorPanel.classList.remove('hidden');
+}
+
+function hideError() { errorPanel.classList.add('hidden'); }
+function hideResults() { resultsSection.classList.add('hidden'); }
+
+function exportPickList() {
+    let csv = "Rank,Team,PickScore,OPR,Auto,Teleop\n";
+    currentPickList.forEach((t, i) => {
+        csv += `${i+1},${t.number},${t.pickScore.toFixed(1)},${t.totalOPR.toFixed(1)},${t.auto.toFixed(1)},${t.teleop.toFixed(1)}\n`;
+    });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `pick_list_${currentEvent.code}_${timestamp}.csv`;
+    a.download = `FTC_Picklist.csv`;
     a.click();
-    window.URL.revokeObjectURL(url);
-}
-
-function setLoading(isLoading) {
-    loadEventBtn.disabled = isLoading;
-    if (isLoading) {
-        loadBtnText.textContent = 'Loading Event Data...';
-        loadBtnLoader.classList.remove('hidden');
-    } else {
-        loadBtnText.textContent = 'Load Event & Generate Pick List';
-        loadBtnLoader.classList.add('hidden');
-    }
-}
-
-function showError(message) {
-    errorMessage.textContent = message;
-    errorPanel.classList.remove('hidden');
-}
-
-function hideError() {
-    errorPanel.classList.add('hidden');
-}
-
-function hideResults() {
-    resultsSection.classList.add('hidden');
 }

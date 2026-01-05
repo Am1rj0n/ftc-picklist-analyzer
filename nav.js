@@ -6,8 +6,7 @@ function createNavigation(currentPage) {
     const navItems = [
         { id: 'phase1', label: 'Alliance Simulator', page: 'index.html' },
         { id: 'phase2', label: 'Match Predictor', page: 'match-predictor.html' },
-        { id: 'phase3', label: 'Pick List Builder', page: 'pick-list.html' },
-        { id: 'phase4', label: 'Event Dashboard', page: 'event-dashboard.html' }
+        { id: 'phase3', label: 'Pick List Builder', page: 'pick-list.html' }
     ];
     
     nav.innerHTML = `

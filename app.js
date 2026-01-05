@@ -28,7 +28,7 @@ function gaussianRandom() {
     return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 }
 
-// CLIENT-SIDE MONTE CARLO SIMULATION - FIXED
+// CLIENT-SIDE MONTE CARLO SIMULATION 
 function runMonteCarloSimulation(stats1, stats2, targetScore, iterations = 10000) {
     const scores = [];
     

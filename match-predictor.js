@@ -20,7 +20,7 @@ document.querySelectorAll('input').forEach(input => {
     });
 });
 
-// CLIENT-SIDE MONTE CARLO SIMULATION - FIXED
+// CLIENT-SIDE MONTE CARLO SIMULATION
 function runMonteCarloSimulation(stats1, stats2, iterations = 10000) {
     const scores = [];
     
