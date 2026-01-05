@@ -20,7 +20,7 @@ All analysis runs **live in your browser** - no server setup required!
 
 ## Features
 
-### 1️⃣ Alliance Simulator
+### Alliance Simulator
 Simulate how two teams will perform together using Monte Carlo analysis.
 
 **What it does:**
