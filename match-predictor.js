@@ -242,6 +242,15 @@ function displayResults(data) {
     renderComparisonChart(data.yourAlliance.histogram, data.oppAlliance.histogram);
     generateInsights(data);
 
+    // Track Google Analytics Event
+    if (typeof gtag !== 'undefined') {
+        gtag('event', 'match_prediction', {
+            'event_category': 'engagement',
+            'event_label': 'match_predictor',
+            'win_probability': data.prediction.yourWinProb
+        });
+    }
+
     resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 

@@ -183,7 +183,6 @@ async function runSimulation() {
         setLoading(false);
     }
 }
-
 function displayResults(data) {
     resultsSection.classList.remove('hidden');
 
@@ -207,6 +206,16 @@ function displayResults(data) {
     document.getElementById('winProbSubtitle').textContent = `vs target ${data.targetScore}`;
 
     renderHistogram(data.simulation.histogram);
+
+    // Track Google Analytics Event
+    if (typeof gtag !== 'undefined') {
+        gtag('event', 'simulation_run', {
+            'event_category': 'engagement',
+            'event_label': 'alliance_simulator',
+            'team1': data.team1.number,
+            'team2': data.team2.number
+        });
+    }
 
     resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }

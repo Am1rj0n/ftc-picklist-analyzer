@@ -143,6 +143,16 @@ function displayResults() {
     document.getElementById('eventCode2').textContent = `Code: ${currentEvent.code}`;
     document.getElementById('teamCount').textContent = `${currentPickList.length} teams found`;
     renderTable(currentPickList);
+
+    // Track Google Analytics Event
+    if (typeof gtag !== 'undefined') {
+        gtag('event', 'picklist_generated', {
+            'event_category': 'engagement',
+            'event_label': 'pick_list_builder',
+            'event_code': currentEvent.code,
+            'team_count': currentPickList.length
+        });
+    }
 }
 
 function renderTable(list) {
