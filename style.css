@@ -968,4 +968,24 @@ body {
         width: 20px;
         height: 20px;
     }
+    /* Legend color samples */
+.legend-item .tier-s {
+    color: #fbbf24;
+    font-weight: 700;
+}
+
+.legend-item .tier-a {
+    color: #60a5fa;
+    font-weight: 700;
+}
+
+.legend-item .tier-b {
+    color: #34d399;
+    font-weight: 700;
+}
+
+.legend-item .tier-c {
+    color: #9ca3af;
+    font-weight: 700;
+}
 }

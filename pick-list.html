@@ -102,14 +102,15 @@
                     <div class="filter-group">
                         <label for="sortBy">Sort By</label>
                         <select id="sortBy" class="filter-select">
-                            <option value="pickScore">Pick Score (Recommended)</option>
-                            <option value="opr">Total OPR</option>
-                            <option value="consistency">Consistency</option>
-                            <option value="autoOPR">Auto OPR</option>
-                            <option value="dcOPR">TeleOp OPR</option>
-                            <option value="winRate">Win Rate</option>
-                            <option value="rank">Event Rank</option>
-                        </select>
+    <option value="pickScore">Pick Score (Recommended)</option>
+    <option value="opr">Total OPR</option>
+    <option value="complementary">Complementary Fit</option>
+    <option value="consistency">Consistency</option>
+    <option value="autoOPR">Auto OPR</option>
+    <option value="dcOPR">TeleOp OPR</option>
+    <option value="winRate">Win Rate</option>
+    <option value="rank">Event Rank</option>
+</select>
                     </div>
 
                     <div class="filter-group">
@@ -158,19 +159,19 @@
                 <div class="table-container">
                     <table class="pick-list-table" id="pickListTable">
                         <thead>
-                            <tr>
-                                <th>Pick #</th>
-                                <th>Team</th>
-                                <th>Rank</th>
-                                <th>Pick Score</th>
-                                <th>Total OPR</th>
-                                <th>Auto</th>
-                                <th>TeleOp</th>
-                                <th>W-L-T</th>
-                                <th>Consistency</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
+    <tr>
+        <th>Pick #</th>
+        <th>Team</th>
+        <th>Rank</th>
+        <th>Pick Score</th>
+        <th>Total OPR</th>
+        <th>Auto</th>
+        <th>TeleOp</th>
+        <th>Complement</th>
+        <th>Consistency</th>
+        <th>Actions</th>
+    </tr>
+            </thead>
                         <tbody id="pickListBody">
                             <!-- Populated by JS -->
                         </tbody>
@@ -179,21 +180,20 @@
             </div>
 
             <!-- Legend -->
-            <div class="legend-panel">
-                <h4>📊 Metrics Explained</h4>
-                <div class="legend-grid">
-                    <div class="legend-item">
-                        <strong>Pick Score:</strong> Overall ranking combining OPR, consistency, win rate, and complementary fit with your team
-                    </div>
-                    <div class="legend-item">
-                        <strong>Consistency:</strong> Lower values = more predictable. Teams with low std deviation are reliable
-                    </div>
-                    <div class="legend-item">
-                        <strong>Complementary:</strong> Bonus points if team fills gaps in YOUR team's capabilities (auto/teleop)
-                    </div>
-                </div>
-            </div>
+           <div class="legend-panel">
+    <h4>📊 Metrics Explained</h4>
+    <div class="legend-grid">
+        <div class="legend-item">
+            <strong>Pick Score:</strong> Overall ranking (30% OPR + 40% Win Probability + 20% Complementary Fit + 10% Consistency)
         </div>
+        <div class="legend-item">
+            <strong>Complementary Fit :</strong> How much better they are than YOU in auto/teleop. Bigger gaps where you're weak = higher score. Teams strong in BOTH get bonus points.
+        </div>
+        <div class="legend-item">
+            <strong>Consistency:</strong> Lower = more predictable. Reliable teams have low standard deviation.
+        </div>
+    </div>
+</div>
 
       <!-- Footer -->
         <footer class="footer">
