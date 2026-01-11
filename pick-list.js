@@ -130,47 +130,61 @@ function getAllAlliances(teams) {
     return alliances;
 }
 
-/** ---------------- EVENT WIN % SIMULATION (ALL ALLIANCES + Monte Carlo Tournaments) ---------------- */
+/** ---------------- FULL EVENT WIN % SIMULATION (All Alliances Exhaustive) ---------------- */
 function simulateFullEventWin(yourStats, candidateStats, allTeams) {
-    const teams = allTeams.filter(t => t.number !== yourStats.number && t.number !== candidateStats.number);
-    const selectedAlliance = [yourStats, candidateStats];
-    const allAlliances = getAllAlliances(teams);
-
-    let wins = 0;
-
-    for (let t = 0; t < EVENT_SIM_ITER; t++) {
-        // Pick 7 unique random alliances for tournament + our alliance
-        const aliveAlliances = [selectedAlliance];
-        const usedIndices = new Set();
-
-        while (aliveAlliances.length < 8 && usedIndices.size < allAlliances.length) {
-            const idx = Math.floor(Math.random() * allAlliances.length);
-            if (!usedIndices.has(idx)) {
-                aliveAlliances.push(allAlliances[idx]);
-                usedIndices.add(idx);
-            }
+    // Generate all possible 2-team alliances
+    const allAlliances = [];
+    for (let i = 0; i < allTeams.length; i++) {
+        for (let j = i + 1; j < allTeams.length; j++) {
+            allAlliances.push([allTeams[i], allTeams[j]]);
         }
+    }
 
-        // Play single-elimination tournament
-        let round = aliveAlliances;
-        while (round.length > 1) {
+    // Candidate alliance
+    const candidateAlliance = [yourStats, candidateStats];
+
+    // Filter out alliances containing your team
+    const opponentAlliances = allAlliances.filter(a => !a.some(t => t.number === yourStats.number));
+
+    // Number of simulations per candidate
+    const SIMULATIONS_PER_CANDIDATE = 100;
+    let totalWins = 0;
+
+    for (let sim = 0; sim < SIMULATIONS_PER_CANDIDATE; sim++) {
+        // Shuffle opponent alliances randomly for this tournament
+        const shuffledOpponents = [...opponentAlliances].sort(() => Math.random() - 0.5);
+
+        // Insert candidate alliance at a random position to simulate bracket
+        const tournamentAlliances = [...shuffledOpponents];
+        tournamentAlliances.splice(Math.floor(Math.random() * (tournamentAlliances.length + 1)), 0, candidateAlliance);
+
+        // Single-elimination tournament simulation
+        let aliveAlliances = [...tournamentAlliances];
+
+        while (aliveAlliances.length > 1) {
             const nextRound = [];
-            for (let i = 0; i < round.length; i += 2) {
-                const a1 = round[i];
-                const a2 = round[i + 1];
-                if (!a2) { nextRound.push(a1); continue; }
+            for (let i = 0; i < aliveAlliances.length; i += 2) {
+                const a1 = aliveAlliances[i];
+                const a2 = aliveAlliances[i + 1];
+                if (!a2) {
+                    nextRound.push(a1);
+                    continue;
+                }
                 const score1 = simulateAllianceScore(a1);
                 const score2 = simulateAllianceScore(a2);
                 nextRound.push(score1 >= score2 ? a1 : a2);
             }
-            round = nextRound;
+            aliveAlliances = nextRound;
         }
 
-        if (round[0].includes(candidateStats)) wins++;
+        // Did our candidate alliance win this tournament?
+        if (aliveAlliances[0].includes(candidateStats)) totalWins++;
     }
 
-    return (wins / EVENT_SIM_ITER) * 100;
+    const totalSimulations = SIMULATIONS_PER_CANDIDATE;
+    return (totalWins / totalSimulations) * 100;
 }
+
 
 /** ---------------- LOAD EVENT ---------------- */
 async function loadEvent() {
